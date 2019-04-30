@@ -44,6 +44,7 @@ typedef struct _tr
     void (*destroy)(struct _tr *this);
     int (*socket)(struct _tr *this);
     void (*get_addr_info)(struct _tr *this);
+    void (*get_hostname)(struct _tr *this);
     void (*set_sock_opts)(struct _tr *this);
     void (*prep_send_pak)(struct _tr *this);
     void (*send)(struct _tr *this);
@@ -63,6 +64,7 @@ typedef struct _tr
     struct sockaddr comming;
     struct sockaddr_in *go;
     struct sockaddr_in *com;
+    struct sockaddr_in who_tp;
 
     struct addrinfo *info_h;
     struct sockaddr_in *ip_h;
@@ -75,6 +77,7 @@ typedef struct _tr
     char send_pac[PAK_SIZE], recv_pac[PAK_SIZE], cont_pac[PAK_SIZE];
     /* host ip */
     char *hip;
+    char *hostname;
     int packet_len, recv_len, ip_len;
 
     int ttl_max, ttl_beg, ttl_cur;

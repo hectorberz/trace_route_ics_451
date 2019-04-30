@@ -62,6 +62,7 @@ static int _socket(trace_route *this)
 static void _get_addr_info(trace_route *this)
 {
     struct in_addr addr_h;
+
     if (getaddrinfo(this->target, NULL, NULL, &this->info_h) != 0)
     {
         char str_err[50];
@@ -72,6 +73,34 @@ static void _get_addr_info(trace_route *this)
     this->ip_h = (struct sockaddr_in *)this->info_h->ai_addr;
     addr_h = (struct in_addr)this->ip_h->sin_addr;
     this->hip = inet_ntoa(addr_h);
+}
+static void _get_hostname(trace_route *this)
+{
+    struct sockaddr_in *to;
+    struct hostent *hent;
+    char nbuf[64];
+
+    to = (struct sockaddr_in *)&this->who_tp;
+    to->sin_family = AF_INET;
+
+    if (!inet_aton(this->target, &to->sin_addr))
+    {
+        hent = gethostbyname(this->target);
+        to->sin_family = hent->h_addrtype;
+        if (hent->h_length > (int)sizeof(to->sin_addr))
+        {
+            hent->h_length = sizeof(to->sin_addr);
+        }
+        memcpy(&to->sin_addr, hent->h_addr, hent->h_length);
+        strncpy(nbuf, hent->h_name, sizeof(nbuf) - 1);
+        this->hostname = nbuf;
+    }
+    else
+        this->hostname = this->target;
+
+    if (to->sin_family == AF_INET)
+
+        printf("trace route to %s (%s), %d hops max, %d byte packets\n", this->hostname, this->hip, this->ttl_max, DATALEN + 8);
 }
 static void _set_sock_opts(trace_route *this)
 {
@@ -190,6 +219,7 @@ trace_route *BEGIN_TRACE_ROUTE(char *target, int ttl_max)
     this->send = _send;
     this->recvmsg = _recvmsg;
     this->print_tr = _print_tr;
+    this->get_hostname = _get_hostname;
 
     this->go = (struct sockaddr_in *)&this->going;
     this->com = (struct sockaddr_in *)&this->comming;
@@ -216,8 +246,11 @@ int main(int argc, char *argv[])
     trace_route *tr = BEGIN_TRACE_ROUTE(argv[1], 30);
     tr->attempt = 0;
     tr->get_addr_info(tr);
-    printf("trace route to %s (%s), %d hops max, %d byte packets\n", tr->target, tr->hip, tr->ttl_max, DATALEN + 8);
+    /**
+        printf("trace route to %s (%s), %d hops max, %d byte packets\n", tr->target, tr->hip, tr->ttl_max, DATALEN + 8);
+*/
     tr->socket(tr);
+    tr->get_hostname(tr);
 
     while (tr->ttl_cur < tr->ttl_max && !fin)
     {

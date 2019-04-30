@@ -23,7 +23,9 @@
 #include "trace_route.h"
 
 static const char *tr_lab = "TRACE ROUTE: ";
+
 static int skip = 0;
+
 static void pnip(char *name, char *ipstr, long *ttl)
 {
     int i;
@@ -74,6 +76,7 @@ static int _socket(trace_route *this)
         perror(str);
         exit(EXIT_FAILURE);
     }
+
     this->time_out.tv_sec = 0;
     this->time_out.tv_usec = 500000;
 
@@ -147,6 +150,7 @@ static void _set_sock_opts(trace_route *this)
 static void _prep_send_pak(trace_route *this)
 {
     gettimeofday((struct timeval *)&this->send_pac[8], (struct timezone *)NULL);
+
     this->icmp = (struct icmp *)this->send_pac;
     this->icmp->icmp_type = ICMP_ECHO;
     this->icmp->icmp_code = 0;
@@ -160,6 +164,7 @@ static void _prep_send_pak(trace_route *this)
 static void _send(trace_route *this)
 {
     gettimeofday(&this->time_strt, (struct timezone *)NULL);
+
     if (sendto(this->sock_fd, this->send_pac, this->packet_len, 0, (struct sockaddr *)&this->who_tp, sizeof(struct sockaddr)) < 0)
     {
         char str_err[50];
@@ -183,22 +188,21 @@ static void _recvmsg(trace_route *this)
     this->msg.msg_controllen = PAK_SIZE;
 
     this->recv_len = recvmsg(this->sock_fd, &this->msg, 0);
+
     gettimeofday(&this->time_fin, (struct timezone *)NULL);
+
     this->ip_out = (struct ip *)this->recv_pac;
     this->ip_len = this->ip_out->ip_hl << 2;
     this->recv_len -= this->ip_len;
     this->icmp = (struct icmp *)(this->recv_pac + this->ip_len);
     this->ip_in = inet_ntoa(this->ip_out->ip_src);
 
-    if (strcmp(this->ip_last_vst, this->ip_in) == 0)
-    {
-        this->attempt = 3;
-        return;
-    }
     if (this->icmp->icmp_type == ICMP_ECHOREPLY)
         time_ptr = (struct timeval *)this->icmp->icmp_data;
-    else
+
+    else if (this->icmp->icmp_type == ICMP_TIME_EXCEEDED)
         time_ptr = (struct timeval *)&this->time_strt;
+    
     get_time(&this->time_fin, time_ptr);
     rtt = (this->time_fin.tv_sec * 10000 + (this->time_fin.tv_usec / 100));
     this->rtt_s[this->attempt] = rtt;
@@ -230,8 +234,10 @@ static int _print_tr(trace_route *this)
     }
     printf("%2d  ", this->ttl_cur);
     pnip(name_h, this->ip_in, this->rtt_s);
+
     if ((strcmp(this->ip_in, this->hosts_ip)) == 0)
         return 1;
+
     return 0;
 }
 

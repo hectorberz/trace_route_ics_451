@@ -14,14 +14,35 @@ void get_time(struct timeval *start, struct timeval *end);
 
 typedef struct _tr
 {
+    /* Free the trace_route object. */
     void (*destroy)(struct _tr *this);
+
+    /* open sock_fd */
     int (*socket)(struct _tr *this);
+
+    /* Get the address info from user input. */
     void (*get_addr_info)(struct _tr *this);
+
+    /* Get the hostname and set the sin_family to the correct address type. */
     void (*get_hostname)(struct _tr *this);
+
+    /* Add a timeout to the socket and set the ttl. */
     void (*set_sock_opts)(struct _tr *this);
+
+    /* Add current time to the send_pac and compute the checksum. */
     void (*prep_send_pak)(struct _tr *this);
+
+    /* Record the time and call sendto */
     void (*send)(struct _tr *this);
+
+    /**
+     * Wait for response.
+     * If the reponse type is an echo reply, use the time data from the response.
+     * Otherwise use the the timeval obj you set in send.
+     */
     void (*recvmsg)(struct _tr *this);
+
+    /* Print the results */
     int (*print_tr)(struct _tr *this);
 
     struct timeval time_strt;

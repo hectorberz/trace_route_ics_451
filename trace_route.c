@@ -26,7 +26,10 @@ static const char *tr_lab = "TRACE ROUTE: ";
 
 static int skip = 0;
 
-static void pnip(char *name, char *ipstr, long *ttl)
+/**
+ * print host name, ip, and rtt. 
+ */
+static void pnipt(char *name, char *ipstr, long *ttl)
 {
     int i;
     printf("%s (%s)", name, ipstr);
@@ -38,10 +41,18 @@ static void pnip(char *name, char *ipstr, long *ttl)
     }
     printf("\n");
 }
+
+/**
+ * If the alarm goes off, set skip to true.
+ */
 void handler(int signum)
 {
     skip = 1;
 }
+
+/**
+ * Computes the time in microseconds between two timeval objects.
+ */
 void get_time(struct timeval *res, struct timeval *ptr)
 {
     if ((res->tv_usec -= ptr->tv_usec) < 0)
@@ -51,6 +62,10 @@ void get_time(struct timeval *res, struct timeval *ptr)
     }
     res->tv_sec -= ptr->tv_sec;
 }
+
+/**
+ * Free the trace_route object.
+ */
 static void _destroy(trace_route *this)
 {
     if (NULL != this)
@@ -59,8 +74,9 @@ static void _destroy(trace_route *this)
         this = NULL;
     }
 }
+
 /**
- * open the send socket sock_s
+ * open sock_fd
  */
 static int _socket(trace_route *this)
 {
@@ -77,18 +93,12 @@ static int _socket(trace_route *this)
         exit(EXIT_FAILURE);
     }
 
-    this->time_out.tv_sec = 0;
-    this->time_out.tv_usec = 500000;
-
-    if (setsockopt(this->sock_fd, SOL_SOCKET, SO_RCVTIMEO, &this->time_out, sizeof(struct timeval)) != 0)
-    {
-        char str_err[50];
-        sprintf(str_err, "%s%s\n", tr_lab, "Set Socket Options Timeval");
-        perror(str_err);
-        exit(EXIT_FAILURE);
-    }
     return 0;
 }
+
+/**
+ * Get the address info from user input.
+ */
 static void _get_addr_info(trace_route *this)
 {
     struct in_addr addr_h;
@@ -104,6 +114,10 @@ static void _get_addr_info(trace_route *this)
     addr_h = (struct in_addr)this->ip_h->sin_addr;
     this->hip = inet_ntoa(addr_h);
 }
+
+/**
+ * Get the hostname and set the sin_family to the correct address type.
+ */
 static void _get_hostname(trace_route *this)
 {
     struct sockaddr_in *to;
@@ -135,8 +149,20 @@ static void _get_hostname(trace_route *this)
 
     this->hosts_ip = strdup(inet_ntoa(to->sin_addr));
 }
+
+/**
+ * Add a timeout to the socket and set the ttl.
+ */
 static void _set_sock_opts(trace_route *this)
 {
+
+    if (setsockopt(this->sock_fd, SOL_SOCKET, SO_RCVTIMEO, &this->time_out, sizeof(struct timeval)) != 0)
+    {
+        char str_err[50];
+        sprintf(str_err, "%s%s\n", tr_lab, "Set Socket Options Timeval");
+        perror(str_err);
+        exit(EXIT_FAILURE);
+    }
 
     if (setsockopt(this->sock_fd, IPPROTO_IP, IP_TTL, &this->ttl_cur, sizeof(this->ttl_cur)) != 0)
     {
@@ -146,7 +172,9 @@ static void _set_sock_opts(trace_route *this)
         exit(EXIT_FAILURE);
     }
 }
-
+/**
+ * Add current time to the send_pac and compute the checksum.
+ */
 static void _prep_send_pak(trace_route *this)
 {
     gettimeofday((struct timeval *)&this->send_pac[8], (struct timezone *)NULL);
@@ -161,6 +189,10 @@ static void _prep_send_pak(trace_route *this)
     this->packet_len = DATALEN + 8;
     this->icmp->icmp_cksum = checksum((unsigned short *)this->icmp, this->packet_len);
 }
+
+/**
+ * Record the time and call sendto
+ */
 static void _send(trace_route *this)
 {
     gettimeofday(&this->time_strt, (struct timezone *)NULL);
@@ -173,6 +205,12 @@ static void _send(trace_route *this)
         exit(EXIT_FAILURE);
     }
 }
+
+/**
+ * Wait for response.
+ * If the reponse type is an echo reply, use the time data from the response.
+ * Otherwise use the the timeval obj you set in send.
+ */
 static void _recvmsg(trace_route *this)
 {
     long rtt = 0;
@@ -187,8 +225,10 @@ static void _recvmsg(trace_route *this)
     this->msg.msg_control = this->cont_pac;
     this->msg.msg_controllen = PAK_SIZE;
 
-    this->recv_len = recvmsg(this->sock_fd, &this->msg, 0);
-
+    if ((this->recv_len = recvmsg(this->sock_fd, &this->msg, 0)) < 0)
+    {
+        skip = 1;
+    }
     gettimeofday(&this->time_fin, (struct timezone *)NULL);
 
     this->ip_out = (struct ip *)this->recv_pac;
@@ -202,21 +242,23 @@ static void _recvmsg(trace_route *this)
 
     else if (this->icmp->icmp_type == ICMP_TIME_EXCEEDED)
         time_ptr = (struct timeval *)&this->time_strt;
-    
+
     get_time(&this->time_fin, time_ptr);
     rtt = (this->time_fin.tv_sec * 10000 + (this->time_fin.tv_usec / 100));
     this->rtt_s[this->attempt] = rtt;
 }
 
+/**
+ * Print the results
+ */
 static int _print_tr(trace_route *this)
 {
     char name_h[NI_MAXHOST];
     struct sockaddr_in ip_d;
-    int i;
 
     ip_d.sin_family = AF_INET;
 
-    if (strcmp(this->ip_last_vst, this->ip_in) == 0)
+    if (this->recv_len < 0)
     {
         printf("%2d  * * *\n", this->ttl_cur);
         return 0;
@@ -233,7 +275,7 @@ static int _print_tr(trace_route *this)
         exit(EXIT_FAILURE);
     }
     printf("%2d  ", this->ttl_cur);
-    pnip(name_h, this->ip_in, this->rtt_s);
+    pnipt(name_h, this->ip_in, this->rtt_s);
 
     if ((strcmp(this->ip_in, this->hosts_ip)) == 0)
         return 1;
@@ -258,6 +300,7 @@ trace_route *BEGIN_TRACE_ROUTE(char *target, int ttl_max)
     this->ttl_beg = 1;
     this->ttl_cur = this->ttl_beg;
     this->target = target;
+    this->recv_len = 0;
 
     this->id = (getpid() & 0xffff);
     return this;
@@ -275,6 +318,8 @@ int main(int argc, char *argv[])
 
     trace_route *tr = BEGIN_TRACE_ROUTE(argv[1], 30);
     tr->attempt = 0;
+    tr->time_out.tv_sec = 0;
+    tr->time_out.tv_usec = 500000;
     tr->get_addr_info(tr);
     tr->socket(tr);
     tr->get_hostname(tr);
@@ -284,6 +329,7 @@ int main(int argc, char *argv[])
         skip = 0;
         signal(SIGALRM, handler);
         alarm(3);
+
         while (tr->attempt < 3 && !skip)
         {
             tr->set_sock_opts(tr);

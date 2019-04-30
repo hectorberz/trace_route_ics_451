@@ -3,6 +3,23 @@
 	 *  trace_route.c
 	*/
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <unistd.h>
+#include <string.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/time.h>
+#include <signal.h>
+#include <errno.h>
+#include <pthread.h>
+
+#include "checksum.h"
 #include "trace_route.h"
 
 static const char *tr_lab = "TRACE ROUTE: ";
@@ -57,6 +74,16 @@ static int _socket(trace_route *this)
         perror(str);
         exit(EXIT_FAILURE);
     }
+    this->time_out.tv_sec = 0;
+    this->time_out.tv_usec = 500000;
+
+    if (setsockopt(this->sock_fd, SOL_SOCKET, SO_RCVTIMEO, &this->time_out, sizeof(struct timeval)) != 0)
+    {
+        char str_err[50];
+        sprintf(str_err, "%s%s\n", tr_lab, "Set Socket Options Timeval");
+        perror(str_err);
+        exit(EXIT_FAILURE);
+    }
     return 0;
 }
 static void _get_addr_info(trace_route *this)
@@ -100,21 +127,13 @@ static void _get_hostname(trace_route *this)
 
     if (to->sin_family == AF_INET)
         printf("trace route to %s (%s), %d hops max, %d byte packets\n", this->hostname, inet_ntoa(to->sin_addr), this->ttl_max, DATALEN + 8);
+    else
+        printf("trace route to %s, %d hops max, %d byte packets\n", this->hostname, this->ttl_max, DATALEN + 8);
 
     this->hosts_ip = strdup(inet_ntoa(to->sin_addr));
 }
 static void _set_sock_opts(trace_route *this)
 {
-    this->time_out.tv_sec = 0;
-    this->time_out.tv_usec = 500000;
-
-    if (setsockopt(this->sock_fd, SOL_SOCKET, SO_RCVTIMEO, &this->time_out, sizeof(struct timeval)) != 0)
-    {
-        char str_err[50];
-        sprintf(str_err, "%s%s\n", tr_lab, "Set Socket Options Timeval");
-        perror(str_err);
-        exit(EXIT_FAILURE);
-    }
 
     if (setsockopt(this->sock_fd, IPPROTO_IP, IP_TTL, &this->ttl_cur, sizeof(this->ttl_cur)) != 0)
     {
@@ -127,20 +146,21 @@ static void _set_sock_opts(trace_route *this)
 
 static void _prep_send_pak(trace_route *this)
 {
-
+    gettimeofday((struct timeval *)&this->send_pac[8], (struct timezone *)NULL);
     this->icmp = (struct icmp *)this->send_pac;
     this->icmp->icmp_type = ICMP_ECHO;
     this->icmp->icmp_code = 0;
 
     this->icmp->icmp_id = this->id;
     this->icmp->icmp_seq = 0;
-    this->icmp->icmp_cksum = checksum((unsigned short *)this->icmp, sizeof(struct icmp));
+    this->icmp->icmp_cksum = 0;
     this->packet_len = DATALEN + 8;
+    this->icmp->icmp_cksum = checksum((unsigned short *)this->icmp, this->packet_len);
 }
 static void _send(trace_route *this)
 {
     gettimeofday(&this->time_strt, (struct timezone *)NULL);
-    if (sendto(this->sock_fd, this->send_pac, this->packet_len, 0, (struct sockaddr *)&this->who_tp, sizeof(struct sockaddr)) == -1)
+    if (sendto(this->sock_fd, this->send_pac, this->packet_len, 0, (struct sockaddr *)&this->who_tp, sizeof(struct sockaddr)) < 0)
     {
         char str_err[50];
         sprintf(str_err, "%s%s\n", tr_lab, "Send to");
@@ -151,6 +171,7 @@ static void _send(trace_route *this)
 static void _recvmsg(trace_route *this)
 {
     long rtt = 0;
+    struct timeval *time_ptr;
     this->iov.iov_base = this->recv_pac;
     this->iov.iov_len = PAK_SIZE;
 
@@ -162,15 +183,23 @@ static void _recvmsg(trace_route *this)
     this->msg.msg_controllen = PAK_SIZE;
 
     this->recv_len = recvmsg(this->sock_fd, &this->msg, 0);
+    gettimeofday(&this->time_fin, (struct timezone *)NULL);
     this->ip_out = (struct ip *)this->recv_pac;
+    this->ip_len = this->ip_out->ip_hl << 2;
+    this->recv_len -= this->ip_len;
+    this->icmp = (struct icmp *)(this->recv_pac + this->ip_len);
     this->ip_in = inet_ntoa(this->ip_out->ip_src);
 
     if (strcmp(this->ip_last_vst, this->ip_in) == 0)
     {
         this->attempt = 3;
+        return;
     }
-    gettimeofday(&this->time_fin, (struct timezone *)NULL);
-    get_time(&this->time_fin, &this->time_strt);
+    if (this->icmp->icmp_type == ICMP_ECHOREPLY)
+        time_ptr = (struct timeval *)this->icmp->icmp_data;
+    else
+        time_ptr = (struct timeval *)&this->time_strt;
+    get_time(&this->time_fin, time_ptr);
     rtt = (this->time_fin.tv_sec * 10000 + (this->time_fin.tv_usec / 100));
     this->rtt_s[this->attempt] = rtt;
 }
@@ -179,10 +208,9 @@ static int _print_tr(trace_route *this)
 {
     char name_h[NI_MAXHOST];
     struct sockaddr_in ip_d;
+    int i;
 
-    this->ip_out = (struct ip *)this->recv_pac;
-    this->ip_len = this->ip_out->ip_hl << 2;
-    this->ip_in = inet_ntoa(this->ip_out->ip_src);
+    ip_d.sin_family = AF_INET;
 
     if (strcmp(this->ip_last_vst, this->ip_in) == 0)
     {
@@ -190,11 +218,9 @@ static int _print_tr(trace_route *this)
         return 0;
     }
     strcpy(this->ip_last_vst, this->ip_in);
-    this->recv_len -= this->ip_len;
-    this->icmp = (struct icmp *)(this->recv_pac + this->ip_len);
-    ip_d.sin_family = AF_INET;
 
     inet_pton(AF_INET, this->ip_in, &ip_d.sin_addr);
+
     if (getnameinfo((struct sockaddr *)&ip_d, sizeof(ip_d), name_h, sizeof(name_h), NULL, 0, 0) != 0)
     {
         char str_err[50];
@@ -222,15 +248,12 @@ trace_route *BEGIN_TRACE_ROUTE(char *target, int ttl_max)
     this->print_tr = _print_tr;
     this->get_hostname = _get_hostname;
 
-    this->go = (struct sockaddr_in *)&this->going;
-    this->com = (struct sockaddr_in *)&this->comming;
-
     this->ttl_max = ttl_max;
     this->ttl_beg = 1;
     this->ttl_cur = this->ttl_beg;
     this->target = target;
 
-    this->id = (getpid() & 0xffff) | 0x0000;
+    this->id = (getpid() & 0xffff);
     return this;
 }
 int main(int argc, char *argv[])
@@ -247,9 +270,6 @@ int main(int argc, char *argv[])
     trace_route *tr = BEGIN_TRACE_ROUTE(argv[1], 30);
     tr->attempt = 0;
     tr->get_addr_info(tr);
-    /**
-        printf("trace route to %s (%s), %d hops max, %d byte packets\n", tr->target, tr->hip, tr->ttl_max, DATALEN + 8);
-*/
     tr->socket(tr);
     tr->get_hostname(tr);
 
@@ -271,5 +291,6 @@ int main(int argc, char *argv[])
         tr->ttl_cur++;
     }
     close(tr->sock_fd);
+    tr->destroy(tr);
     return 0;
 }

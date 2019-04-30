@@ -59,6 +59,8 @@ typedef struct _tr
     char *ip_in;
     char ip_last_vst[50];
     char ip_dest[50];
+
+    char *hosts_ip;
     long rtt_s[3];
     struct sockaddr going;
     struct sockaddr comming;

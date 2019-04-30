@@ -99,8 +99,9 @@ static void _get_hostname(trace_route *this)
         this->hostname = this->target;
 
     if (to->sin_family == AF_INET)
+        printf("trace route to %s (%s), %d hops max, %d byte packets\n", this->hostname, inet_ntoa(to->sin_addr), this->ttl_max, DATALEN + 8);
 
-        printf("trace route to %s (%s), %d hops max, %d byte packets\n", this->hostname, this->hip, this->ttl_max, DATALEN + 8);
+    this->hosts_ip = strdup(inet_ntoa(to->sin_addr));
 }
 static void _set_sock_opts(trace_route *this)
 {
@@ -139,7 +140,7 @@ static void _prep_send_pak(trace_route *this)
 static void _send(trace_route *this)
 {
     gettimeofday(&this->time_strt, (struct timezone *)NULL);
-    if (sendto(this->sock_fd, this->send_pac, this->packet_len, 0, this->info_h->ai_addr, this->info_h->ai_addrlen) == -1)
+    if (sendto(this->sock_fd, this->send_pac, this->packet_len, 0, (struct sockaddr *)&this->who_tp, sizeof(struct sockaddr)) == -1)
     {
         char str_err[50];
         sprintf(str_err, "%s%s\n", tr_lab, "Send to");
@@ -203,7 +204,7 @@ static int _print_tr(trace_route *this)
     }
     printf("%2d  ", this->ttl_cur);
     pnip(name_h, this->ip_in, this->rtt_s);
-    if ((strcmp(name_h, this->target)) == 0)
+    if ((strcmp(this->ip_in, this->hosts_ip)) == 0)
         return 1;
     return 0;
 }

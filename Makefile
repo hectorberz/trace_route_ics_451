@@ -1,11 +1,11 @@
 SRCS = $(shell find -name '*.c')
 OBJS = $(SRCS:.c=.o)
 EXEC = tr
-CFLAGS = -Wall -ggdb3 
+CFLAGS = -Wall  
 LFLAGS =  
 CC = gcc
 $(EXEC): $(OBJS)
-	$(CC) -o $@ $^ $(LFLAGS)
+	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
 
 $(OBJS): $(SRCS)
 	$(CC) -c $^ $(CFLAGS)

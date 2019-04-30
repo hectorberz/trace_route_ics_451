@@ -149,7 +149,7 @@ static int _print_tr(trace_route *this)
 {
     char name_h[NI_MAXHOST];
     struct sockaddr_in ip_d;
-    int result = 1;
+
     this->ip_out = (struct ip *)this->recv_pac;
     this->ip_len = this->ip_out->ip_hl << 2;
     this->ip_in = inet_ntoa(this->ip_out->ip_src);

@@ -9,41 +9,44 @@
 #define NI_MAXHOST 1025
 #define NI_MAXSERV 32
 
+/* If the alarm goes off, set skip to true. */
 void handler(int signum);
-void get_time(struct timeval *start, struct timeval *end);
 
-typedef struct _tr
+/* Computes the time in microseconds between two timeval objects. */
+void get_time(struct timeval *res, struct timeval *ptr);
+
+typedef struct _trace_route
 {
     /* Free the trace_route object. */
-    void (*destroy)(struct _tr *this);
+    void (*destroy)(struct _trace_route *this);
 
     /* open sock_fd */
-    int (*socket)(struct _tr *this);
+    int (*socket)(struct _trace_route *this);
 
     /* Get the address info from user input. */
-    void (*get_addr_info)(struct _tr *this);
+    void (*get_addr_info)(struct _trace_route *this);
 
     /* Get the hostname and set the sin_family to the correct address type. */
-    void (*get_hostname)(struct _tr *this);
+    void (*get_hostname)(struct _trace_route *this);
 
     /* Add a timeout to the socket and set the ttl. */
-    void (*set_sock_opts)(struct _tr *this);
+    void (*set_sock_opts)(struct _trace_route *this);
 
     /* Add current time to the send_pac and compute the checksum. */
-    void (*prep_send_pak)(struct _tr *this);
+    void (*prep_send_pak)(struct _trace_route *this);
 
     /* Record the time and call sendto */
-    void (*send)(struct _tr *this);
+    void (*send)(struct _trace_route *this);
 
     /**
      * Wait for response.
      * If the reponse type is an echo reply, use the time data from the response.
      * Otherwise use the the timeval obj you set in send.
      */
-    void (*recvmsg)(struct _tr *this);
+    void (*recvmsg)(struct _trace_route *this);
 
     /* Print the results */
-    int (*print_tr)(struct _tr *this);
+    int (*print_tr)(struct _trace_route *this);
 
     struct timeval time_strt;
     struct timeval time_fin;

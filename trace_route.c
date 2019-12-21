@@ -143,9 +143,11 @@ static void _get_hostname(trace_route *this)
         this->hostname = this->target;
 
     if (to->sin_family == AF_INET)
-        printf("trace route to %s (%s), %d hops max, %d byte packets\n", this->hostname, inet_ntoa(to->sin_addr), this->ttl_max, DATALEN + 8);
+        printf("trace route to %s (%s), %d hops max, %d byte packets\n",
+               this->hostname, inet_ntoa(to->sin_addr), this->ttl_max, DATALEN + 8);
     else
-        printf("trace route to %s, %d hops max, %d byte packets\n", this->hostname, this->ttl_max, DATALEN + 8);
+        printf("trace route to %s, %d hops max, %d byte packets\n",
+               this->hostname, this->ttl_max, DATALEN + 8);
 
     this->hosts_ip = strdup(inet_ntoa(to->sin_addr));
 }
@@ -156,7 +158,8 @@ static void _get_hostname(trace_route *this)
 static void _set_sock_opts(trace_route *this)
 {
 
-    if (setsockopt(this->sock_fd, SOL_SOCKET, SO_RCVTIMEO, &this->time_out, sizeof(struct timeval)) != 0)
+    if (setsockopt(this->sock_fd, SOL_SOCKET, SO_RCVTIMEO,
+                   &this->time_out, sizeof(struct timeval)) != 0)
     {
         char str_err[50];
         sprintf(str_err, "%s%s\n", tr_lab, "Set Socket Options Timeval");
@@ -164,7 +167,8 @@ static void _set_sock_opts(trace_route *this)
         exit(EXIT_FAILURE);
     }
 
-    if (setsockopt(this->sock_fd, IPPROTO_IP, IP_TTL, &this->ttl_cur, sizeof(this->ttl_cur)) != 0)
+    if (setsockopt(this->sock_fd, IPPROTO_IP, IP_TTL,
+                   &this->ttl_cur, sizeof(this->ttl_cur)) != 0)
     {
         char str_err[50];
         sprintf(str_err, "%s%s\n", tr_lab, "Set Socket Options TTL");
@@ -197,7 +201,8 @@ static void _send(trace_route *this)
 {
     gettimeofday(&this->time_strt, (struct timezone *)NULL);
 
-    if (sendto(this->sock_fd, this->send_pac, this->packet_len, 0, (struct sockaddr *)&this->who_tp, sizeof(struct sockaddr)) < 0)
+    if (sendto(this->sock_fd, this->send_pac, this->packet_len, 0,
+               (struct sockaddr *)&this->who_tp, sizeof(struct sockaddr)) < 0)
     {
         char str_err[50];
         sprintf(str_err, "%s%s\n", tr_lab, "Send to");
@@ -267,7 +272,8 @@ static int _print_tr(trace_route *this)
 
     inet_pton(AF_INET, this->ip_in, &ip_d.sin_addr);
 
-    if (getnameinfo((struct sockaddr *)&ip_d, sizeof(ip_d), name_h, sizeof(name_h), NULL, 0, 0) != 0)
+    if (getnameinfo((struct sockaddr *)&ip_d, sizeof(ip_d),
+                    name_h, sizeof(name_h), NULL, 0, 0) != 0)
     {
         char str_err[50];
         sprintf(str_err, "%s%s\n", tr_lab, "getnameinfo");
@@ -308,18 +314,20 @@ trace_route *BEGIN_TRACE_ROUTE(char *target, int ttl_max)
 int main(int argc, char *argv[])
 {
     int fin = 0;
-    if (argc == 0)
+    if (argc < 2)
     {
         char str_err[50];
         sprintf(str_err, "%s%s", tr_lab, "Trace route requires an argument.");
-        perror(str_err);
+        printf("%s\n", str_err);
         exit(EXIT_FAILURE);
     }
 
     trace_route *tr = BEGIN_TRACE_ROUTE(argv[1], 30);
+
     tr->attempt = 0;
     tr->time_out.tv_sec = 0;
     tr->time_out.tv_usec = 500000;
+
     tr->get_addr_info(tr);
     tr->socket(tr);
     tr->get_hostname(tr);
